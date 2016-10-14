@@ -21,13 +21,13 @@ evalExpr env (ListExpr (x:xs)) = do
 	evalExpr env x
 	evalExpr env (ListExpr xs)
 -- Evaluate lists
---evalExpr env (ArrayLit list) = do
---    case list of
---        [] -> return (List [])
---        (x:xs) -> do
---            hd <- evalExpr env x
---            (List tl) <- evalExpr env (ArrayLit xs)
---            return (List ([hd]++tl))
+evalExpr env (ArrayLit list) = do
+    case list of
+        [] -> return (List [])
+        (x:xs) -> do
+            hd <- evalExpr env x
+            (List tl) <- evalExpr env (ArrayLit xs)
+            return (List ([hd]++tl))
 -- Evaluate Negative Numbers
 --evalExpr env (PrefixExpr PrefixMinus expr) = do
 --	aux <- evalExpr env expr
