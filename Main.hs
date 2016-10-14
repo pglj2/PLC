@@ -10,8 +10,10 @@ import Value
 -- Evaluate functions
 --
 evalExpr :: StateT -> Expression -> StateTransformer Value
+
 evalExpr env (VarRef (Id id)) = stateLookup env id
---evalExpr env NulLit = return Nil
+evalExpr env NullLit = return Nil
+evalExpr env (StringLit str) = return (String str)
 evalExpr env (IntLit int) = return $ Int int
 evalExpr env (BoolLit bool) = return $ Bool bool
 evalExpr env (ListExpr []) = return Nil
@@ -29,9 +31,9 @@ evalExpr env (ListExpr (x:xs)) = do
 -- Evaluate Negative Numbers
 --evalExpr env (PrefixExpr PrefixMinus expr) = do
 --	aux <- evalExpr env expr
---	case (aux) of
+--	case aux of
 --	(Int int) -> return $ Int (-int)
---	_ -> error $ "prefix minus invalid"
+--	_ -> return $ Error "prefix minus invalid"
 -----
 evalExpr env (InfixExpr op expr1 expr2) = do
     v1 <- evalExpr env expr1
