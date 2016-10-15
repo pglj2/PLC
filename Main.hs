@@ -10,7 +10,6 @@ import Value
 -- Evaluate functions
 --
 evalExpr :: StateT -> Expression -> StateTransformer Value
-
 evalExpr env (VarRef (Id id)) = stateLookup env id
 evalExpr env NullLit = return Nil
 evalExpr env (StringLit str) = return (String str)
@@ -34,16 +33,23 @@ evalExpr env (PrefixExpr PrefixMinus expr) = do
 	case aux of
 		(Int int) -> return $ Int (-int)
 		_ -> return $ Error "prefix minus invalid"
------
 evalExpr env (InfixExpr op expr1 expr2) = do
     v1 <- evalExpr env expr1
     v2 <- evalExpr env expr2
     infixOp env op v1 v2
 evalExpr env (AssignExpr OpAssign (LVar var) expr) = do
-    stateLookup env var -- crashes if the variable doesn't exist
-    e <- evalExpr env expr
-    setVar var e
-
+    r <- stateLookup env var -- crashes if the variable doesn't exist -> crasha mais nao :D
+    case r of
+        -- variable not defined
+        (Error _) -> do
+            varDecl env (VarDecl (Id var) (Nothing))
+            auxv <- evalExpr env expr
+            setVar var auxv
+        -- variable defined
+        _   -> do
+            e <- evalExpr env expr
+            setVar var e
+        
 evalStmt :: StateT -> Statement -> StateTransformer Value
 evalStmt env EmptyStmt = return Nil
 evalStmt env (VarDeclStmt []) = return Nil
@@ -58,11 +64,24 @@ evalStmt env (IfSingleStmt exp stmt) = do
 evalStmt env (WhileStmt exp stmt) = do
 	aval <- evalExpr env exp
 	case aval of
-		(Bool True) -> do 
-			stt <- evalStmt env stmt
-			if stt == Break then return Nil else evalStmt env (WhileStmt exp stmt) 
+--		(Bool True) -> do 
+--			stt <- evalStmt env stmt
+--			if stt == Break then return Nil else evalStmt env (WhileStmt exp stmt) 
 		(Bool False) -> return Nil			
 		_ -> return $ Error "not a boolean expression"  
+
+-- Evaluate if else statement
+-- fiz isso aqui... aparentemente ta certo mas não testei direito
+evalStmt env (IfStmt expr ifBlock elseBlock) = do
+    condition <- evalExpr env expr
+    case condition of
+        (Bool cond) -> if (cond) then do
+        ret <- (evalStmt env ifBlock)
+        return ret
+         else do 
+            ret <- (evalStmt env elseBlock)
+            return ret
+        (Error _) -> return $ Error ("Condition error")
 
 
 -- Do not touch this one :)
@@ -94,7 +113,7 @@ infixOp env OpLOr  (Bool v1) (Bool v2) = return $ Bool $ v1 || v2
 -- Environment and auxiliary functions
 --
 
-environment :: Map String Value --mudar para lista
+environment :: Map String Value 
 environment = Map.empty
 
 stateLookup :: StateT -> String -> StateTransformer Value

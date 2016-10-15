@@ -1,2 +1,3 @@
-var x = (-6), y = 4;
-x + y;
+var x = 6, y = 4;
+if (true) {x} else {y}
+
