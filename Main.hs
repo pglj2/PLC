@@ -29,11 +29,11 @@ evalExpr env (ArrayLit list) = do
             (List tl) <- evalExpr env (ArrayLit xs)
             return (List ([hd]++tl))
 -- Evaluate Negative Numbers
---evalExpr env (PrefixExpr PrefixMinus expr) = do
---	aux <- evalExpr env expr
---	case aux of
---	(Int int) -> return $ Int (-int)
---	_ -> return $ Error "prefix minus invalid"
+evalExpr env (PrefixExpr PrefixMinus expr) = do
+	aux <- evalExpr env expr
+	case aux of
+		(Int int) -> return $ Int (-int)
+		_ -> return $ Error "prefix minus invalid"
 -----
 evalExpr env (InfixExpr op expr1 expr2) = do
     v1 <- evalExpr env expr1
@@ -50,6 +50,20 @@ evalStmt env (VarDeclStmt []) = return Nil
 evalStmt env (VarDeclStmt (decl:ds)) =
     varDecl env decl >> evalStmt env (VarDeclStmt ds)
 evalStmt env (ExprStmt expr) = evalExpr env expr
+evalStmt env (IfSingleStmt exp stmt) = do
+	bol <- evalExpr env exp
+	case bol of
+		(Bool b) -> if b == True then evalStmt env stmt else return Nil --retorno a ser modificado!
+		_ -> return $ Error "not a boolean expression"
+evalStmt env (WhileStmt exp stmt) = do
+	aval <- evalExpr env exp
+	case aval of
+		(Bool True) -> do 
+			stt <- evalStmt env stmt
+			if stt == Break then return Nil else evalStmt env (WhileStmt exp stmt) 
+		(Bool False) -> return Nil			
+		_ -> return $ Error "not a boolean expression"  
+
 
 -- Do not touch this one :)
 evaluate :: StateT -> [Statement] -> StateTransformer Value
@@ -80,7 +94,7 @@ infixOp env OpLOr  (Bool v1) (Bool v2) = return $ Bool $ v1 || v2
 -- Environment and auxiliary functions
 --
 
-environment :: Map String Value
+environment :: Map String Value --mudar para lista
 environment = Map.empty
 
 stateLookup :: StateT -> String -> StateTransformer Value
@@ -105,7 +119,7 @@ setVar var val = ST $ \s -> (val, insert var val s)
 -- Types and boilerplate
 --
 
-type StateT = Map String Value
+type StateT = Map String Value --mudar para lista
 data StateTransformer t = ST (StateT -> (t, StateT))
 
 instance Monad StateTransformer where
