@@ -49,7 +49,13 @@ evalExpr env (AssignExpr OpAssign (LVar var) expr) = do
         _   -> do
             e <- evalExpr env expr
             setVar var e
-            
+
+-- increment/decrement value
+evalExpr env (UnaryAssignExpr inc (LVar var)) = do 
+    case inc of
+        (PrefixInc) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpAdd (VarRef (Id var)) (IntLit 1))) 
+        (PrefixDec) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpSub (VarRef (Id var)) (IntLit 1)))
+
 --Evaluate Statements        
 evalStmt :: StateT -> Statement -> StateTransformer Value
 evalStmt env EmptyStmt = return Nil
@@ -65,16 +71,17 @@ evalStmt env (IfSingleStmt exp stmt) = do
 		(Bool b) -> if b == True then evalStmt env stmt else return Nil --retorno a ser modificado!
 		_ -> return $ Error "not a boolean expression"
 
---Evaluate ifsingle statement		
+--Evaluate while statement		
 evalStmt env (WhileStmt exp stmt) = do
 	aval <- evalExpr env exp
-	stt <- evalStmt env stmt
 	case aval of
-		  (Bool True) -> if (stt == Break) then do
-            		  return Nil 
-              		else do
-            		  ret <-(evalStmt env (WhileStmt exp stmt)) 
-            		  return ret
+		  (Bool True) -> do
+	              	stt <- (evalStmt env stmt)
+              		case (stt) of 
+              		  (Break) -> return Nil 
+              		  _ -> do 
+            		          ret <-(evalStmt env (WhileStmt exp stmt)) 
+            		          return ret
 		  (Bool False) -> return Nil			
 		  _ -> return $ Error "not a boolean expression"  
 
@@ -91,6 +98,17 @@ evalStmt env (IfStmt expr ifBlock elseBlock) = do
             return ret
         (Error _) -> return $ Error ("Condition error")
 
+
+
+-- BlockStmt
+evalStmt env (BlockStmt []) = return Nil
+evalStmt env (BlockStmt (x:xs)) = do
+  ret <- evalStmt env x
+  case ret of
+        (Break) -> return Break
+        _ -> do
+         return ret
+         evalStmt env (BlockStmt xs)
 
 -- Do not touch this one :)
 evaluate :: StateT -> [Statement] -> StateTransformer Value
