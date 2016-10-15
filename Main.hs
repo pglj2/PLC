@@ -50,11 +50,16 @@ evalExpr env (AssignExpr OpAssign (LVar var) expr) = do
             e <- evalExpr env expr
             setVar var e
 
--- increment/decrement value
+--Evaluate increment/decrement value
 evalExpr env (UnaryAssignExpr inc (LVar var)) = do 
     case inc of
         (PrefixInc) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpAdd (VarRef (Id var)) (IntLit 1))) 
         (PrefixDec) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpSub (VarRef (Id var)) (IntLit 1)))
+        (PostfixInc) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpAdd (VarRef (Id var)) (IntLit 1)))
+        (PostfixDec) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpSub (VarRef (Id var)) (IntLit 1)))
+        
+--Evaluate Functions
+
 
 --Evaluate Statements        
 evalStmt :: StateT -> Statement -> StateTransformer Value
@@ -83,7 +88,13 @@ evalStmt env (WhileStmt exp stmt) = do
             		          ret <-(evalStmt env (WhileStmt exp stmt)) 
             		          return ret
 		  (Bool False) -> return Nil			
-		  _ -> return $ Error "not a boolean expression"  
+		  _ -> return $ Error "not a boolean expression" 
+		  
+--Evaluate dowhile statement
+--evalStmt env (DoWhileStmt stmt exp) = do
+--  aval <- evalExpr env exp
+--  sval <- evalStmt env stmt
+ 
 
 -- Evaluate if else statement
 -- fiz isso aqui... aparentemente ta certo mas não testei direito

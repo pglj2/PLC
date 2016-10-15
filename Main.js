@@ -1,11 +1,15 @@
-var a = 1;
+var a = 40;
 var b = 43;
 var c = true;
+var cont = 0;
+while(c) {
 if( a < b){
-  a = a+1;
+  ++a;
+  ++cont;
 } else {
-  if(c) {
-  b = b+1;
+  if(a == b) {
+  c = false;
   }
 }
-[a+1,++b];
+}
+[cont++];
