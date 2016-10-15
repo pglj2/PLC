@@ -49,26 +49,34 @@ evalExpr env (AssignExpr OpAssign (LVar var) expr) = do
         _   -> do
             e <- evalExpr env expr
             setVar var e
-        
+            
+--Evaluate Statements        
 evalStmt :: StateT -> Statement -> StateTransformer Value
 evalStmt env EmptyStmt = return Nil
 evalStmt env (VarDeclStmt []) = return Nil
 evalStmt env (VarDeclStmt (decl:ds)) =
     varDecl env decl >> evalStmt env (VarDeclStmt ds)
 evalStmt env (ExprStmt expr) = evalExpr env expr
+
+--Evaluate ifsingle statement
 evalStmt env (IfSingleStmt exp stmt) = do
 	bol <- evalExpr env exp
 	case bol of
 		(Bool b) -> if b == True then evalStmt env stmt else return Nil --retorno a ser modificado!
 		_ -> return $ Error "not a boolean expression"
+
+--Evaluate ifsingle statement		
 evalStmt env (WhileStmt exp stmt) = do
 	aval <- evalExpr env exp
+	stt <- evalStmt env stmt
 	case aval of
---		(Bool True) -> do 
---			stt <- evalStmt env stmt
---			if stt == Break then return Nil else evalStmt env (WhileStmt exp stmt) 
-		(Bool False) -> return Nil			
-		_ -> return $ Error "not a boolean expression"  
+		  (Bool True) -> if (stt == Break) then do
+            		  return Nil 
+              		else do
+            		  ret <-(evalStmt env (WhileStmt exp stmt)) 
+            		  return ret
+		  (Bool False) -> return Nil			
+		  _ -> return $ Error "not a boolean expression"  
 
 -- Evaluate if else statement
 -- fiz isso aqui... aparentemente ta certo mas não testei direito

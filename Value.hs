@@ -8,6 +8,7 @@ data Value = Bool Bool
     | List [Value]
     | Error String
     | Break --talvez seja necessário para o BreakStmt, no dia que eu entender eu aviso :v	
+    deriving(Eq)
 
 --
 -- Pretty Printer
