@@ -9,6 +9,14 @@ import Value
 --
 -- Evaluate functions
 --
+evalForInit :: StateT -> ForInit -> StateTransformer Value
+evalForInit env (NoInit) = return Nil
+evalForInit env (VarInit []) = return Nil
+evalForInit env (VarInit (x:xs)) = do
+    varDecl env x >> evalForInit env (VarInit xs) -- se varDecl ou evalForInit for Nothing, será Nothing
+evalForInit env (ExprInit expr) = do
+    evalExpr env expr
+
 evalExpr :: StateT -> Expression -> StateTransformer Value
 evalExpr env (VarRef (Id id)) = stateLookup env id
 evalExpr env NullLit = return Nil
@@ -90,14 +98,22 @@ evalStmt env (WhileStmt exp stmt) = do
 		  (Bool False) -> return Nil			
 		  _ -> return $ Error "not a boolean expression" 
 		  
---Evaluate dowhile statement
---evalStmt env (DoWhileStmt stmt exp) = do
---  aval <- evalExpr env exp
---  sval <- evalStmt env stmt
- 
+--Evaluate DoWhile statement
+evalStmt env (DoWhileStmt stmt exp) = do
+  aval <- evalExpr env exp
+  stt <- evalStmt env stmt
+  case aval of
+		  (Bool True) -> do
+              		case (stt) of 
+              		  (Break) -> return Nil 
+              		  _ -> do 
+            		          ret <-(evalStmt env (DoWhileStmt stmt exp)) 
+            		          return ret
+		  (Bool False) -> return Nil
+		  _ -> return $ Error "not a boolean expression" 
+		  
 
 -- Evaluate if else statement
--- fiz isso aqui... aparentemente ta certo mas não testei direito
 evalStmt env (IfStmt expr ifBlock elseBlock) = do
     condition <- evalExpr env expr
     case condition of
@@ -109,9 +125,7 @@ evalStmt env (IfStmt expr ifBlock elseBlock) = do
             return ret
         (Error _) -> return $ Error ("Condition error")
 
-
-
--- BlockStmt
+-- Evaluate BlockStmt
 evalStmt env (BlockStmt []) = return Nil
 evalStmt env (BlockStmt (x:xs)) = do
   ret <- evalStmt env x
@@ -120,6 +134,23 @@ evalStmt env (BlockStmt (x:xs)) = do
         _ -> do
          return ret
          evalStmt env (BlockStmt xs)
+
+-- Evaluate ForStmt
+-- exptest = test/condition ; expinc = increment ; stmt = statement/body; 
+evalStmt env (ForStmt initialize exptest expinc stmt) = do 
+     evalForInit env initialize 
+     case exptest of
+          Nothing -> return Nil
+          (Just  exp) -> do
+            check <- evalExpr env exp
+            if (check == (Bool True)) then do 
+            evalStmt env stmt
+            case expinc of
+                 Nothing -> return Nil
+                 (Just exp) -> do
+                 evalExpr env exp
+                 evalStmt env (ForStmt NoInit exptest expinc stmt)
+            else return Nil
 
 -- Do not touch this one :)
 evaluate :: StateT -> [Statement] -> StateTransformer Value
