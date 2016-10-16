@@ -9,8 +9,15 @@ import Value
 --
 -- Evaluate functions
 --
-evalExpr :: StateT -> Expression -> StateTransformer Value
+evalForInit :: StateT -> ForInit -> StateTransformer Value
+evalForInit env (NoInit) = return Nil
+evalForInit env (VarInit []) = return Nil
+evalForInit env (VarInit (x:xs)) = do
+    varDecl env x >> evalForInit env (VarInit xs) -- se varDecl ou evalForInit for Nothing, será Nothing
+evalForInit env (ExprInit expr) = do
+    evalExpr env expr
 
+evalExpr :: StateT -> Expression -> StateTransformer Value
 evalExpr env (VarRef (Id id)) = stateLookup env id
 evalExpr env NullLit = return Nil
 evalExpr env (StringLit str) = return (String str)
@@ -21,49 +28,129 @@ evalExpr env (ListExpr (x:xs)) = do
 	evalExpr env x
 	evalExpr env (ListExpr xs)
 -- Evaluate lists
---evalExpr env (ArrayLit list) = do
---    case list of
---        [] -> return (List [])
---        (x:xs) -> do
---            hd <- evalExpr env x
---            (List tl) <- evalExpr env (ArrayLit xs)
---            return (List ([hd]++tl))
+evalExpr env (ArrayLit list) = do
+    case list of
+        [] -> return (List [])
+        (x:xs) -> do
+            hd <- evalExpr env x
+            (List tl) <- evalExpr env (ArrayLit xs)
+            return (List ([hd]++tl))
 -- Evaluate Negative Numbers
 evalExpr env (PrefixExpr PrefixMinus expr) = do
 	aux <- evalExpr env expr
 	case aux of
 		(Int int) -> return $ Int (-int)
 		_ -> return $ Error "prefix minus invalid"
------
 evalExpr env (InfixExpr op expr1 expr2) = do
     v1 <- evalExpr env expr1
     v2 <- evalExpr env expr2
     infixOp env op v1 v2
 evalExpr env (AssignExpr OpAssign (LVar var) expr) = do
-    stateLookup env var -- crashes if the variable doesn't exist
-    e <- evalExpr env expr
-    setVar var e
+    r <- stateLookup env var -- crashes if the variable doesn't exist -> crasha mais nao :D
+    case r of
+        -- variable not defined
+        (Error _) -> do
+            varDecl env (VarDecl (Id var) (Nothing))
+            auxv <- evalExpr env expr
+            setVar var auxv
+        -- variable defined
+        _   -> do
+            e <- evalExpr env expr
+            setVar var e
 
+--Evaluate increment/decrement value
+evalExpr env (UnaryAssignExpr inc (LVar var)) = do 
+    case inc of
+        (PrefixInc) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpAdd (VarRef (Id var)) (IntLit 1))) 
+        (PrefixDec) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpSub (VarRef (Id var)) (IntLit 1)))
+        (PostfixInc) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpAdd (VarRef (Id var)) (IntLit 1)))
+        (PostfixDec) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpSub (VarRef (Id var)) (IntLit 1)))
+        
+--Evaluate Functions
+
+
+--Evaluate Statements        
 evalStmt :: StateT -> Statement -> StateTransformer Value
 evalStmt env EmptyStmt = return Nil
 evalStmt env (VarDeclStmt []) = return Nil
 evalStmt env (VarDeclStmt (decl:ds)) =
     varDecl env decl >> evalStmt env (VarDeclStmt ds)
 evalStmt env (ExprStmt expr) = evalExpr env expr
+
+--Evaluate ifsingle statement
 evalStmt env (IfSingleStmt exp stmt) = do
 	bol <- evalExpr env exp
 	case bol of
 		(Bool b) -> if b == True then evalStmt env stmt else return Nil --retorno a ser modificado!
 		_ -> return $ Error "not a boolean expression"
+
+--Evaluate while statement		
 evalStmt env (WhileStmt exp stmt) = do
 	aval <- evalExpr env exp
 	case aval of
-		(Bool True) -> do 
-			stt <- evalStmt env stmt
-			if stt == Break then return Nil else evalStmt env (WhileStmt exp stmt) 
-		(Bool False) -> return Nil			
-		_ -> return $ Error "not a boolean expression"  
+		  (Bool True) -> do
+	              	stt <- (evalStmt env stmt)
+              		case (stt) of 
+              		  (Break) -> return Nil 
+              		  _ -> do 
+            		          ret <-(evalStmt env (WhileStmt exp stmt)) 
+            		          return ret
+		  (Bool False) -> return Nil			
+		  _ -> return $ Error "not a boolean expression" 
+		  
+--Evaluate DoWhile statement
+evalStmt env (DoWhileStmt stmt exp) = do
+  aval <- evalExpr env exp
+  stt <- evalStmt env stmt
+  case aval of
+		  (Bool True) -> do
+              		case (stt) of 
+              		  (Break) -> return Nil 
+              		  _ -> do 
+            		          ret <-(evalStmt env (DoWhileStmt stmt exp)) 
+            		          return ret
+		  (Bool False) -> return Nil
+		  _ -> return $ Error "not a boolean expression" 
+		  
 
+-- Evaluate if else statement
+evalStmt env (IfStmt expr ifBlock elseBlock) = do
+    condition <- evalExpr env expr
+    case condition of
+        (Bool cond) -> if (cond) then do
+        ret <- (evalStmt env ifBlock)
+        return ret
+         else do 
+            ret <- (evalStmt env elseBlock)
+            return ret
+        (Error _) -> return $ Error ("Condition error")
+
+-- Evaluate BlockStmt
+evalStmt env (BlockStmt []) = return Nil
+evalStmt env (BlockStmt (x:xs)) = do
+  ret <- evalStmt env x
+  case ret of
+        (Break) -> return Break
+        _ -> do
+         return ret
+         evalStmt env (BlockStmt xs)
+
+-- Evaluate ForStmt
+-- exptest = test/condition ; expinc = increment ; stmt = statement/body; 
+evalStmt env (ForStmt initialize exptest expinc stmt) = do 
+     evalForInit env initialize 
+     case exptest of
+          Nothing -> return Nil
+          (Just  exp) -> do
+            check <- evalExpr env exp
+            if (check == (Bool True)) then do 
+            evalStmt env stmt
+            case expinc of
+                 Nothing -> return Nil
+                 (Just exp) -> do
+                 evalExpr env exp
+                 evalStmt env (ForStmt NoInit exptest expinc stmt)
+            else return Nil
 
 -- Do not touch this one :)
 evaluate :: StateT -> [Statement] -> StateTransformer Value
@@ -94,7 +181,7 @@ infixOp env OpLOr  (Bool v1) (Bool v2) = return $ Bool $ v1 || v2
 -- Environment and auxiliary functions
 --
 
-environment :: Map String Value --mudar para lista
+environment :: Map String Value 
 environment = Map.empty
 
 stateLookup :: StateT -> String -> StateTransformer Value
