@@ -66,7 +66,37 @@ evalExpr env (UnaryAssignExpr inc (LVar var)) = do
         (PostfixInc) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpAdd (VarRef (Id var)) (IntLit 1)))
         (PostfixDec) -> evalExpr env (AssignExpr OpAssign (LVar var) (InfixExpr OpSub (VarRef (Id var)) (IntLit 1)))
         
+evalExpr env (DotRef exp (Id id)) = do 
+    aval <- evalExpr env exp
+    case aval of
+        List l -> do 
+            case id of
+                "head" -> nossoHead l 
+                "tail" -> nossoTail l
+                _ -> return $ Error "Cannot use this function"
+
 --Evaluate Functions
+evalExpr env (CallExpr exp listexp) = 
+            case exp of
+                DotRef expres (Id id) -> do
+                    lista <- evalExpr env expres
+                    case lista of
+                        List l -> do
+                            case id of
+                                "concat" -> nossoConcat l listexp
+                                "head" -> nossoHead l
+                                "tail" -> nossoTail l
+                                _ -> return $ Error "Function not available!" --falta fazer o len!
+                        _ -> do
+                            aval <- evalExpr env exp 
+                            case aval of
+                                Func id ids stmts -> do 
+                                    poeEscopo
+                                    retorno <- evalStmt env (BlockStmt stmts)
+                                    tiraEscopo
+                                    case retorno of
+                                        (Break) -> return $ Error "Cannot insert break here"
+                                        _       -> return Nil  
 
 
 --Evaluate Statements        
@@ -81,7 +111,7 @@ evalStmt env (ExprStmt expr) = evalExpr env expr
 evalStmt env (IfSingleStmt exp stmt) = do
 	bol <- evalExpr env exp
 	case bol of
-		(Bool b) -> if b == True then evalStmt env stmt else return Nil --retorno a ser modificado!
+		(Bool b) -> if (b) then evalStmt env stmt else return Nil
 		_ -> return $ Error "not a boolean expression"
 
 --Evaluate while statement		
@@ -152,11 +182,33 @@ evalStmt env (ForStmt initialize exptest expinc stmt) = do
                  evalStmt env (ForStmt NoInit exptest expinc stmt)
             else return Nil
 
+evalStmt env (FunctionStmt (Id id) ids stmts) = variaveisLocais id (Func (Id id) ids stmts)
+
 -- Do not touch this one :)
 evaluate :: StateT -> [Statement] -> StateTransformer Value
 evaluate env [] = return Nil
 evaluate env stmts = foldl1 (>>) $ map (evalStmt env) stmts
 
+--functions for lists ; falta testar!
+nossoHead:: Value -> StateTransformer Value
+nossoHead (List []) = return Nil
+nossoHead (List (a:as)) = return a
+
+nossoTail:: Value -> StateTransformer Value
+nossoTail (List []) = return Nil
+nossoTail (List (a:as)) = return (List as) 
+
+nossoConcat:: Value -> Value -> StateTransformer Value
+nossoConcat (List b) (List []) = return (List b)
+nossoConcat (List as) (List (b:bs)) = 
+                                        case b of
+                                            (List x) -> nossoConcat (List (as++x)) (List bs) --concatenar lista de listas
+                                            c -> nossoConcat (List (as++[c])) (List bs)  
+
+variaveisLocais:: String -> Value -> StateTransformer Value  
+variaveisLocais nome val = ST $ \s -> (val, (insert nome val (head s)):(tail s)) 
+
+variaveisGlobais:: String -> Value -> StateT -> StateT
 --
 -- Operators
 --
@@ -181,14 +233,19 @@ infixOp env OpLOr  (Bool v1) (Bool v2) = return $ Bool $ v1 || v2
 -- Environment and auxiliary functions
 --
 
-environment :: Map String Value 
-environment = Map.empty
+environment :: StateT
+environment = [Map.empty]
+
+lookupEscopo:: StateT -> String -> Maybe Value
+lookupEscopo [] _ = Nothing
+lookupEscopo (a:as) variavel = case Map.lookup variavel a of
+                                    (Nothing) -> lookupEscopo as variavel
+                                    (Just b) -> Just b   
 
 stateLookup :: StateT -> String -> StateTransformer Value
 stateLookup env var = ST $ \s ->
-    -- this way the error won't be skipped by lazy evaluation
-    case Map.lookup var (union s env) of
-        Nothing -> error $ "Variable " ++ show var ++ " not defiend."
+    case lookupEscopo s var of
+        Nothing -> error $ "Variable " ++ show var ++ " not defined."
         Just val -> (val, s)
 
 varDecl :: StateT -> VarDecl -> StateTransformer Value
@@ -200,14 +257,25 @@ varDecl env (VarDecl (Id id) maybeExpr) = do
             setVar id val
 
 setVar :: String -> Value -> StateTransformer Value
-setVar var val = ST $ \s -> (val, insert var val s)
+setVar var val = ST $ \s -> (val, auxInsert var val s)
 
+auxInsert:: String -> Value -> StateT -> StateT
+auxInsert _ _ [] = error $ "Variable doesn't exist"
+auxInsert variavel value env = case (Map.lookup variavel (head env)) of
+                                    Nothing -> (head env):(auxInsert variavel value (tail env))
+                                    (Just a) -> (insert variavel value (head env)):(tail env)
 --
 -- Types and boilerplate
 --
 
-type StateT = Map String Value --mudar para lista
+type StateT = [Map String Value] --mudando para lista, pois assim será possível trabalhar com escopos
 data StateTransformer t = ST (StateT -> (t, StateT))
+
+poeEscopo:: StateTransformer Value
+poeEscopo = ST (\x -> (Nil, (Map.empty):x)) 
+
+tiraEscopo:: StateTransformer Value
+tiraEscopo = ST $ \x -> (Nil,(tail x))
 
 instance Monad StateTransformer where
     return x = ST $ \s -> (x, s)
@@ -228,11 +296,12 @@ instance Applicative StateTransformer where
 --
 
 showResult :: (Value, StateT) -> String
-showResult (val, defs) =
-    show val ++ "\n" ++ show (toList $ union defs environment) ++ "\n"
+showResult (val, []) = ""
+showResult (val, (a:as)) = show val ++ "\n" ++ show (toList $ union a (Map.empty)) ++ "\n" 
+                            ++ showResult (val,as)
 
 getResult :: StateTransformer Value -> (Value, StateT)
-getResult (ST f) = f Map.empty
+getResult (ST f) = f [Map.empty]
 
 main :: IO ()
 main = do
