@@ -83,7 +83,7 @@ evalExpr env (CallExpr exp listexp) =
                     case lista of
                         List l -> do
                             case id of
-                                "concat" -> nossoConcat l listexp
+                                --"concat" -> nossoConcat l (avaliarListaExpr env listexp)
                                 "head" -> nossoHead l
                                 "tail" -> nossoTail l
                                 _ -> return $ Error "Function not available!" --falta fazer o len!
@@ -95,10 +95,21 @@ evalExpr env (CallExpr exp listexp) =
                                     retorno <- evalStmt env (BlockStmt stmts)
                                     tiraEscopo
                                     case retorno of
-                                        (Break) -> return $ Error "Cannot insert break here"
+                                        (Break b) -> return $ Error "Cannot insert break here"
+                                        (Return r) -> return r 
                                         _       -> return Nil  
+ 
+evalExpr env (FuncExpr maybee ids stmts) = 
+    case maybee of
+        (Nothing) -> return $ error "Id fail" 
+        (Just b) -> do 
+            case stateLookup env b of
+                (Nothing) -> return $ error "Function doesn't exist!"
+                (Just a) -> 
 
-
+--função auxiliar para se poder usar a função de concat
+avaliarListaExpr env [] = []
+avaliarListaExpr env (a:as) = (evalExpr env a):(avaliarListaExpr env as)
 --Evaluate Statements        
 evalStmt :: StateT -> Statement -> StateTransformer Value
 evalStmt env EmptyStmt = return Nil
@@ -106,7 +117,11 @@ evalStmt env (VarDeclStmt []) = return Nil
 evalStmt env (VarDeclStmt (decl:ds)) =
     varDecl env decl >> evalStmt env (VarDeclStmt ds)
 evalStmt env (ExprStmt expr) = evalExpr env expr
-
+--evaluate break statement
+evalStmt env (BreakStmt maybee) =
+    case maybee of
+        (Nothing) -> return (Break Nothing)
+        (Just a) -> return (Break (Just a))
 --Evaluate ifsingle statement
 evalStmt env (IfSingleStmt exp stmt) = do
 	bol <- evalExpr env exp
@@ -121,7 +136,7 @@ evalStmt env (WhileStmt exp stmt) = do
 		  (Bool True) -> do
 	              	stt <- (evalStmt env stmt)
               		case (stt) of 
-              		  (Break) -> return Nil 
+              		  (Break b) -> return Nil 
               		  _ -> do 
             		          ret <-(evalStmt env (WhileStmt exp stmt)) 
             		          return ret
@@ -135,13 +150,19 @@ evalStmt env (DoWhileStmt stmt exp) = do
   case aval of
 		  (Bool True) -> do
               		case (stt) of 
-              		  (Break) -> return Nil 
+              		  (Break b) -> return Nil 
               		  _ -> do 
             		          ret <-(evalStmt env (DoWhileStmt stmt exp)) 
             		          return ret
 		  (Bool False) -> return Nil
 		  _ -> return $ Error "not a boolean expression" 
-		  
+--evaluate return statement
+evalStmt env (ReturnStmt maybee) = 
+    case maybee of
+        (Nothing) -> return (Return Nil)
+        (Just b) -> do
+            aval <- evalExpr env b     
+            return $ Return aval		  
 
 -- Evaluate if else statement
 evalStmt env (IfStmt expr ifBlock elseBlock) = do
@@ -157,10 +178,11 @@ evalStmt env (IfStmt expr ifBlock elseBlock) = do
 
 -- Evaluate BlockStmt
 evalStmt env (BlockStmt []) = return Nil
+evalStmt env (BlockStmt ((BreakStmt Nothing):xs)) = return $ Break Nothing
 evalStmt env (BlockStmt (x:xs)) = do
   ret <- evalStmt env x
   case ret of
-        (Break) -> return Break
+        (Break b) -> return $ Break b
         _ -> do
          return ret
          evalStmt env (BlockStmt xs)
@@ -183,6 +205,7 @@ evalStmt env (ForStmt initialize exptest expinc stmt) = do
             else return Nil
 
 evalStmt env (FunctionStmt (Id id) ids stmts) = variaveisLocais id (Func (Id id) ids stmts)
+--coloca a função no ambiente
 
 -- Do not touch this one :)
 evaluate :: StateT -> [Statement] -> StateTransformer Value
@@ -190,25 +213,24 @@ evaluate env [] = return Nil
 evaluate env stmts = foldl1 (>>) $ map (evalStmt env) stmts
 
 --functions for lists ; falta testar!
-nossoHead:: Value -> StateTransformer Value
-nossoHead (List []) = return Nil
-nossoHead (List (a:as)) = return a
+nossoHead:: [Value] -> StateTransformer Value
+nossoHead [] = return Nil
+nossoHead (a:as) = return a
 
-nossoTail:: Value -> StateTransformer Value
-nossoTail (List []) = return Nil
-nossoTail (List (a:as)) = return (List as) 
+nossoTail:: [Value] -> StateTransformer Value
+nossoTail [] = return Nil
+nossoTail (a:as) = return (List as) 
 
-nossoConcat:: Value -> Value -> StateTransformer Value
-nossoConcat (List b) (List []) = return (List b)
-nossoConcat (List as) (List (b:bs)) = 
-                                        case b of
-                                            (List x) -> nossoConcat (List (as++x)) (List bs) --concatenar lista de listas
-                                            c -> nossoConcat (List (as++[c])) (List bs)  
+nossoConcat:: [Value] -> [Value] -> StateTransformer Value
+nossoConcat b [] = return (List b)
+nossoConcat as (b:bs) = case b of
+                            (List x) -> nossoConcat (as++x) bs --concatenar lista de listas
+                            c -> nossoConcat (as++[c]) bs  
 
 variaveisLocais:: String -> Value -> StateTransformer Value  
 variaveisLocais nome val = ST $ \s -> (val, (insert nome val (head s)):(tail s)) 
 
-variaveisGlobais:: String -> Value -> StateT -> StateT
+--variaveisGlobais:: String -> Value -> StateT -> StateT
 --
 -- Operators
 --
@@ -270,7 +292,7 @@ auxInsert variavel value env = case (Map.lookup variavel (head env)) of
 
 type StateT = [Map String Value] --mudando para lista, pois assim será possível trabalhar com escopos
 data StateTransformer t = ST (StateT -> (t, StateT))
-
+--funções de escopo para se adicionar no ambiente
 poeEscopo:: StateTransformer Value
 poeEscopo = ST (\x -> (Nil, (Map.empty):x)) 
 

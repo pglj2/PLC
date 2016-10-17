@@ -10,7 +10,8 @@ data Value = Bool Bool
     | List [Value]
     | Func Id [Id] [Statement] --para avaliar funções
     | Error String
-    | Break --talvez seja necessário para o BreakStmt, no dia que eu entender eu aviso :v	
+    | Return Value 
+    | Break (Maybe Id)--talvez seja necessário para o BreakStmt, no dia que eu entender eu aviso :v	
     deriving(Eq)
 
 --
@@ -25,8 +26,14 @@ instance Show Value where
   show (Var name) = show name
   show Nil = "undefined"
   show (Error st) = show st
+  show (Return v) = show v
+  show (Func (Id id) ids stmts) = show id ++ showArguments ids    
   show (List list) = showListContents list -- a função de baixo estava sendo inutilizada, talvez seja mais interessante deixar desta forma
-  
+
+showArguments:: [Id] -> String  
+showArguments [] = ""
+showArguments [(Id a)] = show a 
+showArguments ((Id a):as) = show a ++ ", " ++ showArguments as
 -- This function could be replaced by (unwords.map show). The unwords
 -- function takes a list of String values and uses them to build a 
 -- single String where the words are separated by spaces.
