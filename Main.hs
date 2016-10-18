@@ -99,6 +99,7 @@ evalExpr env (CallExpr exp listexp) =
                                 "concat" -> nossoConcat env l (listexp)
                                 "head" -> nossoHead l
                                 "tail" -> nossoTail l
+                                "equals" -> equalsAux env l (listexp)
                                 _ -> return $ Error "Function not available!" --falta fazer o len!
                 _ -> do
                     aval <- evalExpr env exp 
@@ -108,8 +109,8 @@ evalExpr env (CallExpr exp listexp) =
                             retorno <- evalStmt env (BlockStmt stmts)
                             tiraEscopo
                             case retorno of
-                                (Break b) -> return $ Error "Cannot insert break here"
-                                (Return r) -> return r 
+                                (Return r) -> return r
+                                (Break b) -> return $ Error "Cannot insert break here" 
                                 _       -> return Nil  
  
 -- Evaluate FuncExpr
@@ -122,6 +123,7 @@ evalExpr env (FuncExpr maybee ids stmts) = do
 --função auxiliar para se poder usar a função de concat
 avaliarListaExpr env [] = []
 avaliarListaExpr env (a:as) = (evalExpr env a):(avaliarListaExpr env as)
+
 --Evaluate Statements        
 evalStmt :: StateT -> Statement -> StateTransformer Value
 evalStmt env EmptyStmt = return Nil
@@ -129,11 +131,13 @@ evalStmt env (VarDeclStmt []) = return Nil
 evalStmt env (VarDeclStmt (decl:ds)) =
     varDecl env decl >> evalStmt env (VarDeclStmt ds)
 evalStmt env (ExprStmt expr) = evalExpr env expr
+
 --evaluate break statement
 evalStmt env (BreakStmt maybee) = 
     case maybee of
         (Nothing) -> return $ Break Nothing
-        (Just a) -> return $ Break (Just a) 
+        (Just a) -> return $ Break (Just a)
+
 --Evaluate ifsingle statement
 evalStmt env (IfSingleStmt exp stmt) = do
 	bol <- evalExpr env exp
@@ -154,7 +158,7 @@ evalStmt env (WhileStmt exp stmt) = do
             		          return ret
 		  (Bool False) -> return Nil			
 		  _ -> return $ Error "not a boolean expression" 
-		  
+
 --Evaluate DoWhile statement
 evalStmt env (DoWhileStmt stmt exp) = do
   aval <- evalExpr env exp
@@ -167,7 +171,8 @@ evalStmt env (DoWhileStmt stmt exp) = do
             		          ret <-(evalStmt env (DoWhileStmt stmt exp)) 
             		          return ret
 		  (Bool False) -> return Nil
-		  _ -> return $ Error "not a boolean expression" 
+		  _ -> return $ Error "not a boolean expression"
+
 --evaluate return statement
 evalStmt env (ReturnStmt maybee) = 
     case maybee of
@@ -245,6 +250,21 @@ nossoLength :: Int -> [Value] -> Value
 nossoLength a [] =  Int a
 nossoLength a (x:xs) = nossoLength (a+1) xs
 
+equalsAux :: StateT -> [Value] -> [Expression] -> StateTransformer Value
+equalsAux env l [] = return (Bool True)
+equalsAux env l (x:xs) = do
+    v1 <- evalExpr env x
+    case v1 of
+        (List a) -> do
+            if(nossoEquals l a) then equalsAux env l xs
+            else return (Bool False)
+
+nossoEquals :: [Value] -> [Value] -> Bool
+nossoEquals [] [] = True
+nossoEquals [] l = False
+nossoEquals l [] = False
+nossoEquals (x:xs) (y:ys) | x == y = (nossoEquals xs ys)
+                          | otherwise = False
 
 variaveisLocais:: String -> Value -> StateTransformer Value  
 variaveisLocais nome val = ST $ \s -> (val, (insert nome val (head s)):(tail s)) 

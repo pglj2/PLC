@@ -1,8 +1,8 @@
-var a = [1,2,3,4];
-var b = [5,6,7,8];
-var c;
-var x;
-c = a.concat(b);
-x = c.len;
-c[1] = 10;
+var a = 1;
 
+function ola (x){
+	var b = 50;
+	var y = x + b;
+	return y;
+}
+ola(a);
