@@ -113,7 +113,7 @@ evalExpr env (CallExpr exp listexp) =
                 _ -> do
                     aval <- evalExpr env exp 
                     case aval of
-                        Func id ids stmts -> do 
+                        (Func id ids stmts) -> do 
                             poeEscopo
                             retorno <- evalStmt env (BlockStmt stmts)
                             tiraEscopo
@@ -397,3 +397,4 @@ main = do
     let statements = unJavaScript js
     putStrLn $ "AST: " ++ (show $ statements) ++ "\n"
     putStr $ showResult $ getResult $ evaluate environment statements
+
