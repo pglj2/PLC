@@ -41,10 +41,19 @@ evalExpr env (PrefixExpr PrefixMinus expr) = do
 	case aux of
 		(Int int) -> return $ Int (-int)
 		_ -> return $ Error "prefix minus invalid"
+
 evalExpr env (InfixExpr op expr1 expr2) = do
     v1 <- evalExpr env expr1
     v2 <- evalExpr env expr2
-    infixOp env op v1 v2
+    case v1 of
+        (Return a) -> do
+            case v2 of
+                (Return b) -> infixOp env op a b
+                _ -> infixOp env op a v2
+        _ -> do
+            case v2 of
+                (Return b) -> infixOp env op v1 b
+                _ -> infixOp env op v1 v2
 
 -- Evaluate LBracket    
 evalExpr env (AssignExpr OpAssign (LVar lval) expr) = do 
@@ -81,7 +90,7 @@ evalExpr env (DotRef exp (Id id)) = do
     case aval of
         List l -> do 
             case id of
-                "len" -> return (nossoLength 0 l)
+                --"len" -> return (nossoLength 0 l)
                 --"concat" -> nossoConcat env l () -- é preciso o concat aqui? se sim, nao sei
                 "head" -> nossoHead l 
                 "tail" -> nossoTail l
@@ -95,12 +104,12 @@ evalExpr env (CallExpr exp listexp) =
                     case lista of
                         List l -> do
                             case id of
-                                "len" -> return (nossoLength 0 l)
+                                --"len" -> return (nossoLength 0 l)
                                 "concat" -> nossoConcat env l (listexp)
                                 "head" -> nossoHead l
                                 "tail" -> nossoTail l
                                 "equals" -> equalsAux env l (listexp)
-                                _ -> return $ Error "Function not available!" --falta fazer o len!
+                                _ -> return $ Error "Function not available!"
                 _ -> do
                     aval <- evalExpr env exp 
                     case aval of
@@ -151,9 +160,9 @@ evalStmt env (WhileStmt exp stmt) = do
 	case aval of
 		  (Bool True) -> do
 	              	stt <- (evalStmt env stmt)
-              		case (stt) of 
-              		  (Break b) -> return Nil 
-              		  _ -> do 
+              		case (stt) of
+              		    (Break b) -> return Nil 
+              		    _ -> do 
             		          ret <-(evalStmt env (WhileStmt exp stmt)) 
             		          return ret
 		  (Bool False) -> return Nil			
@@ -174,12 +183,12 @@ evalStmt env (DoWhileStmt stmt exp) = do
 		  _ -> return $ Error "not a boolean expression"
 
 --evaluate return statement
-evalStmt env (ReturnStmt maybee) = 
+evalStmt env (ReturnStmt maybee) = do
     case maybee of
         (Nothing) -> return (Return Nil)
         (Just b) -> do
             aval <- evalExpr env b     
-            return $ Return aval		  
+            return $ Return aval  
 
 -- Evaluate if else statement
 evalStmt env (IfStmt expr ifBlock elseBlock) = do
@@ -246,9 +255,9 @@ nossoConcat env l (e:es) = do
         (List a) -> nossoConcat env (l ++ a) es
         v -> nossoConcat env (l ++ [v]) es
 
-nossoLength :: Int -> [Value] -> Value
-nossoLength a [] =  Int a
-nossoLength a (x:xs) = nossoLength (a+1) xs
+--nossoLength :: Int -> [Value] -> Value
+--nossoLength a [] =  Int a
+--nossoLength a (x:xs) = nossoLength (a+1) xs
 
 equalsAux :: StateT -> [Value] -> [Expression] -> StateTransformer Value
 equalsAux env l [] = return (Bool True)
