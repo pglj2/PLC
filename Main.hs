@@ -45,18 +45,25 @@ evalExpr env (InfixExpr op expr1 expr2) = do
     v1 <- evalExpr env expr1
     v2 <- evalExpr env expr2
     infixOp env op v1 v2
-evalExpr env (AssignExpr OpAssign (LVar var) expr) = do
-    r <- stateLookup env var -- crashes if the variable doesn't exist -> crasha mais nao :D
-    case r of
-        -- variable not defined
-        (Error _) -> do
-            varDecl env (VarDecl (Id var) (Nothing))
-            auxv <- evalExpr env expr
-            setVar var auxv
+evalExpr env (AssignExpr OpAssign lval expr) = do --incompleto
+    case lval of 
+        (LVar l) -> do
+            r <- stateLookup env l -- crashes if the variable doesn't exist -> crasha mais nao :D
+            aval <- evalExpr env expr     
+            case r of
+            -- variable not defined
+                GlobalVar -> varGlob l aval
         -- variable defined
-        _   -> do
-            e <- evalExpr env expr
-            setVar var e
+                _         -> setVar l aval
+        {-(LBracket exp1 exp2) ->
+            case exp1 of
+                VarRef (Id nome) -> do 
+                    look <- stateLookup env nome
+                    lis <- evalExpr env exp2
+                    expres <- evalExpr env expr
+                    case look of
+                        (List a) -> --criar variável de array
+                        _        -> return $ error "Not an array!"-}          
 
 --Evaluate increment/decrement value
 evalExpr env (UnaryAssignExpr inc (LVar var)) = do 
@@ -87,25 +94,25 @@ evalExpr env (CallExpr exp listexp) =
                                 "head" -> nossoHead l
                                 "tail" -> nossoTail l
                                 _ -> return $ Error "Function not available!" --falta fazer o len!
-                        _ -> do
-                            aval <- evalExpr env exp 
-                            case aval of
-                                Func id ids stmts -> do 
-                                    poeEscopo
-                                    retorno <- evalStmt env (BlockStmt stmts)
-                                    tiraEscopo
-                                    case retorno of
-                                        (Break b) -> return $ Error "Cannot insert break here"
-                                        (Return r) -> return r 
-                                        _       -> return Nil  
+                _ -> do
+                    aval <- evalExpr env exp 
+                    case aval of
+                        Func id ids stmts -> do 
+                            poeEscopo
+                            retorno <- evalStmt env (BlockStmt stmts)
+                            tiraEscopo
+                            case retorno of
+                                (Break b) -> return $ Error "Cannot insert break here"
+                                (Return r) -> return r 
+                                _       -> return Nil  
  
-evalExpr env (FuncExpr maybee ids stmts) = 
-    case maybee of
-        (Nothing) -> return $ error "Id fail" 
-        (Just b) -> do 
-            case stateLookup env b of
-                (Nothing) -> return $ error "Function doesn't exist!"
-                (Just a) -> 
+--evalExpr env (FuncExpr maybee ids stmts) = 
+--    case maybee of
+--        (Nothing) -> return $ error "Id fail" 
+--        (Just b) -> do 
+--            case stateLookup env b of
+--                (Nothing) -> return $ error "Function doesn't exist!"
+--                (Just a) -> 
 
 --função auxiliar para se poder usar a função de concat
 avaliarListaExpr env [] = []
@@ -118,10 +125,10 @@ evalStmt env (VarDeclStmt (decl:ds)) =
     varDecl env decl >> evalStmt env (VarDeclStmt ds)
 evalStmt env (ExprStmt expr) = evalExpr env expr
 --evaluate break statement
-evalStmt env (BreakStmt maybee) =
+evalStmt env (BreakStmt maybee) = 
     case maybee of
-        (Nothing) -> return (Break Nothing)
-        (Just a) -> return (Break (Just a))
+        (Nothing) -> return $ Break Nothing
+        (Just a) -> return $ Break (Just a) 
 --Evaluate ifsingle statement
 evalStmt env (IfSingleStmt exp stmt) = do
 	bol <- evalExpr env exp
@@ -182,7 +189,7 @@ evalStmt env (BlockStmt ((BreakStmt Nothing):xs)) = return $ Break Nothing
 evalStmt env (BlockStmt (x:xs)) = do
   ret <- evalStmt env x
   case ret of
-        (Break b) -> return $ Break b
+        (Break id) -> return $ (Break Nothing) 
         _ -> do
          return ret
          evalStmt env (BlockStmt xs)
@@ -230,7 +237,12 @@ nossoConcat as (b:bs) = case b of
 variaveisLocais:: String -> Value -> StateTransformer Value  
 variaveisLocais nome val = ST $ \s -> (val, (insert nome val (head s)):(tail s)) 
 
---variaveisGlobais:: String -> Value -> StateT -> StateT
+varGlob:: String -> Value -> StateTransformer Value
+varGlob nome val =  ST $ \scope -> (val, variaveisGlobais nome val scope)
+
+variaveisGlobais:: String -> Value -> StateT -> StateT
+variaveisGlobais id val (escopo:env) | env == [] = ((insert id val escopo):env)
+                                     | otherwise = (escopo:(variaveisGlobais id val env)) --a ideia é que o escopo global fique no fundo da pilha  
 --
 -- Operators
 --
@@ -267,16 +279,16 @@ lookupEscopo (a:as) variavel = case Map.lookup variavel a of
 stateLookup :: StateT -> String -> StateTransformer Value
 stateLookup env var = ST $ \s ->
     case lookupEscopo s var of
-        Nothing -> error $ "Variable " ++ show var ++ " not defined."
+        Nothing -> (GlobalVar, s)
         Just val -> (val, s)
 
 varDecl :: StateT -> VarDecl -> StateTransformer Value
 varDecl env (VarDecl (Id id) maybeExpr) = do
     case maybeExpr of
-        Nothing -> setVar id Nil
+        Nothing -> variaveisLocais id Nil
         (Just expr) -> do
             val <- evalExpr env expr
-            setVar id val
+            variaveisLocais id val
 
 setVar :: String -> Value -> StateTransformer Value
 setVar var val = ST $ \s -> (val, auxInsert var val s)

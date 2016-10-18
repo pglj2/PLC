@@ -5,6 +5,7 @@ import Language.ECMAScript3.Syntax
 data Value = Bool Bool
     | Int Int
     | String String
+    | GlobalVar  
     | Var String
     | Nil
     | List [Value]
