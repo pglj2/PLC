@@ -1,4 +1,4 @@
-//Programa 1
+/*Programa 1
 // Comentario ok? ok
 var a = 0;
 var x = true;
@@ -65,4 +65,13 @@ if (v.equals(u)){
 }
 var teste = [bla,blabla];
 teste;
+*/
+//Programa 7
+var iu;
+var x = 1;
+function adiciona(x){
+	x = (x+10);
+}
+adiciona(x);
+x;
 
