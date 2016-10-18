@@ -1,8 +1,8 @@
-var a = 40;
-var b = 43;
-var c = 0;
-for (a; a <= b; a++)
-{
-c++;
-}
-c;
+var a = [1,2,3,4];
+var b = [5,6,7,8];
+var c;
+var x;
+c = a.concat(b);
+x = c.len;
+c[1] = 10;
+
