@@ -45,26 +45,29 @@ evalExpr env (InfixExpr op expr1 expr2) = do
     v1 <- evalExpr env expr1
     v2 <- evalExpr env expr2
     infixOp env op v1 v2
-evalExpr env (AssignExpr OpAssign lval expr) = do --incompleto
-    case lval of 
-        (LVar l) -> do
-            r <- stateLookup env l -- crashes if the variable doesn't exist -> crasha mais nao :D
+
+-- Evaluate LBracket    
+evalExpr env (AssignExpr OpAssign (LVar lval) expr) = do 
+            r <- stateLookup env lval -- crashes if the variable doesn't exist -> crasha mais nao :D
             aval <- evalExpr env expr     
             case r of
             -- variable not defined
-                GlobalVar -> varGlob l aval
-        -- variable defined
-                _         -> setVar l aval
-        {-(LBracket exp1 exp2) ->
-            case exp1 of
-                VarRef (Id nome) -> do 
-                    look <- stateLookup env nome
-                    lis <- evalExpr env exp2
-                    expres <- evalExpr env expr
-                    case look of
-                        (List a) -> --criar variável de array
-                        _        -> return $ error "Not an array!"-}          
+                GlobalVar -> varGlob lval aval
+            -- variable defined
+                _         -> setVar lval aval
 
+evalExpr env (AssignExpr OpAssign (LBracket expr1 expr2) expr) = do
+    case expr1 of
+        VarRef (Id nome) -> do
+            evalNome <- stateLookup env nome
+            a2 <- evalExpr env expr2
+            a3 <- evalExpr env expr
+            case evalNome of 
+                List l -> do
+                    a <- setVarArray (List []) (List l) a2 a3
+                    setVar nome a
+                _ -> error $ "this variable is not a list"
+                
 --Evaluate increment/decrement value
 evalExpr env (UnaryAssignExpr inc (LVar var)) = do 
     case inc of
@@ -78,6 +81,8 @@ evalExpr env (DotRef exp (Id id)) = do
     case aval of
         List l -> do 
             case id of
+                "len" -> return (nossoLength 0 l)
+                --"concat" -> nossoConcat env l () -- é preciso o concat aqui? se sim, nao sei
                 "head" -> nossoHead l 
                 "tail" -> nossoTail l
                 _ -> return $ Error "Cannot use this function"
@@ -90,7 +95,8 @@ evalExpr env (CallExpr exp listexp) =
                     case lista of
                         List l -> do
                             case id of
-                                --"concat" -> nossoConcat l (avaliarListaExpr env listexp)
+                                "len" -> return (nossoLength 0 l)
+                                "concat" -> nossoConcat env l (listexp)
                                 "head" -> nossoHead l
                                 "tail" -> nossoTail l
                                 _ -> return $ Error "Function not available!" --falta fazer o len!
@@ -106,13 +112,12 @@ evalExpr env (CallExpr exp listexp) =
                                 (Return r) -> return r 
                                 _       -> return Nil  
  
---evalExpr env (FuncExpr maybee ids stmts) = 
---    case maybee of
---        (Nothing) -> return $ error "Id fail" 
---        (Just b) -> do 
---            case stateLookup env b of
---                (Nothing) -> return $ error "Function doesn't exist!"
---                (Just a) -> 
+-- Evaluate FuncExpr
+evalExpr env (FuncExpr maybee ids stmts) = do
+    case maybee of
+        Nothing -> return $ Func (Id "fun") ids stmts
+        Just b -> return $ Func b ids stmts
+
 
 --função auxiliar para se poder usar a função de concat
 avaliarListaExpr env [] = []
@@ -228,11 +233,18 @@ nossoTail:: [Value] -> StateTransformer Value
 nossoTail [] = return Nil
 nossoTail (a:as) = return (List as) 
 
-nossoConcat:: [Value] -> [Value] -> StateTransformer Value
-nossoConcat b [] = return (List b)
-nossoConcat as (b:bs) = case b of
-                            (List x) -> nossoConcat (as++x) bs --concatenar lista de listas
-                            c -> nossoConcat (as++[c]) bs  
+nossoConcat :: StateT -> [Value] -> [Expression] -> StateTransformer Value
+nossoConcat env l [] = return (List l)
+nossoConcat env l (e:es) = do
+    v1 <- evalExpr env e 
+    case v1 of
+        (List a) -> nossoConcat env (l ++ a) es
+        v -> nossoConcat env (l ++ [v]) es
+
+nossoLength :: Int -> [Value] -> Value
+nossoLength a [] =  Int a
+nossoLength a (x:xs) = nossoLength (a+1) xs
+
 
 variaveisLocais:: String -> Value -> StateTransformer Value  
 variaveisLocais nome val = ST $ \s -> (val, (insert nome val (head s)):(tail s)) 
@@ -292,6 +304,19 @@ varDecl env (VarDecl (Id id) maybeExpr) = do
 
 setVar :: String -> Value -> StateTransformer Value
 setVar var val = ST $ \s -> (val, auxInsert var val s)
+
+-- Primeiro array guarda valor final 
+-- Segundo array é o valor atual que tenho
+-- Terceiro array é o que quero mudar
+-- Como funciona? percorre todo o array(o que temos, o segundo)
+-- e vai guardando no primeiro. Quando chegar na posit que eu quero mudar
+-- ai coloca o valor.
+
+setVarArray :: Value -> Value -> Value -> Value -> StateTransformer Value 
+setVarArray (List a) (List []) (Int 0) v = return (List (a ++ [v])) 
+setVarArray (List a) (List []) (Int n) v = setVarArray (List (a ++ [])) (List []) (Int (n-1)) v 
+setVarArray (List a) (List (x:xs)) (Int 0) v = return (List (a ++ [v] ++ xs))
+setVarArray (List a) (List (x:xs)) (Int n) v = setVarArray (List (a ++ [x])) (List xs) (Int (n-1)) v
 
 auxInsert:: String -> Value -> StateT -> StateT
 auxInsert _ _ [] = error $ "Variable doesn't exist"
