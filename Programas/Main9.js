@@ -1,0 +1,20 @@
+//bubbleSort
+var a = [34, 203, 3, 746, 200, 984, 198, 764, 9];
+var temp;
+var troca;
+function bubbleSort(a){
+    do {
+        troca = false;
+        for (var i=0; i < ()a.len)-1; i++) {
+            if (a[i] > a[i+1]) {
+                temp = a[i];
+                a[i] = a[i+1];
+                a[i+1] = temp;
+                troca = true;
+            }
+        }
+    } while (troca);
+}
+ 
+bubbleSort(a);
+a;
